@@ -120,6 +120,8 @@ async function renderFlow(context: string) {
   }
   if (flow.steps[flow.steps.length - 1].status === "done") {
     html += `<p>Flow completed</p>`;
+    html += `<a class="button btn btn-outline-secondary mt:6" href="${await nodes
+      .process.endpointUrl}">Go Back</a>`;
   }
   return render(html);
 }
@@ -131,10 +133,10 @@ async function renderStep(context: string, step: FlowStep) {
         return `<p>${step.label}: ${await step.result}</p>`;
       }
       return `
-        <form hx-post="/flow/${context}/${step.id}" hx-trigger="submit" hx-swap="outerHTML" hx-ext="json-enc" class="flex flex:col">
+        <form hx-post="/flow/${context}/${step.id}" hx-trigger="submit" hx-swap="outerHTML" hx-ext="json-enc" class="flex flex:col gap:6 max-w:fit">
           <label>${step.label}</label>
-          <input name="value" type="text">
-          <button type="submit">Submit</button>
+          <input name="value" type="text" class="border:solid|1|black">
+          <button class="btn btn-outline-secondary" type="submit">Submit</button>
         </form>
       `;
   }
@@ -162,7 +164,7 @@ function render(html: string) {
       <script src="https://cdn.master.co/css-runtime@rc"></script>
     </head>
     <body>
-      <main class="p:10">
+      <main class="p:10 h:full w:full flex flex:col gap:6 justify-content:center align-items:center">
         ${html}
       </main>
     </body>
