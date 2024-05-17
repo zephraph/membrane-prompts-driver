@@ -1,0 +1,69 @@
+{
+  "schema": {
+    "types": [
+      {
+        "name": "Root",
+        "actions": [
+          {
+            "name": "start",
+            "type": "Ref",
+            "ofType": "IO",
+            "params": [
+              {
+                "name": "title",
+                "type": "String"
+              }
+            ]
+          },
+          {
+            "name": "run",
+            "type": "Void"
+          }
+        ],
+        "fields": [
+          {
+            "name": "io",
+            "type": "IO",
+            "params": [
+              {
+                "name": "context",
+                "type": "String"
+              },
+              {
+                "name": "title",
+                "type": "String"
+              }
+            ]
+          }
+        ],
+        "events": []
+      },
+      {
+        "name": "IO",
+        "actions": [],
+        "fields": [
+          {
+            "name": "input",
+            "type": "String",
+            "params": [
+              {
+                "name": "label",
+                "type": "String"
+              }
+            ]
+          }
+        ],
+        "events": [
+          {
+            "name": "inputEvent",
+            "type": "Void"
+          }
+        ]
+      },
+      {
+        "name": "StepEvent"
+      }
+    ]
+  },
+  "dependencies": {}
+}
