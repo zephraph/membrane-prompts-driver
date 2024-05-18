@@ -50,10 +50,25 @@
       },
       {
         "name": "IO",
-        "actions": [],
+        "actions": [
+          {
+            "name": "end",
+            "type": "Void"
+          },
+          {
+            "name": "outputText",
+            "type": "Void",
+            "params": [
+              {
+                "name": "text",
+                "type": "String"
+              }
+            ]
+          }
+        ],
         "fields": [
           {
-            "name": "input",
+            "name": "inputText",
             "type": "String",
             "params": [
               {
@@ -63,15 +78,7 @@
             ]
           }
         ],
-        "events": [
-          {
-            "name": "inputEvent",
-            "type": "Void"
-          }
-        ]
-      },
-      {
-        "name": "StepEvent"
+        "events": []
       }
     ]
   },

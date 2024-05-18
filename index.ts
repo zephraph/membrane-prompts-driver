@@ -3,17 +3,20 @@
 // `state` is an object that persists across program updates. Store data here.
 import { root, nodes, state, handles, resolvers } from "membrane";
 
+type Status = "not-started" | "in-progress" | "done";
+
 type FlowStep = {
   id: string;
   label: string;
   kind: "input";
-  status: "waiting" | "done";
+  status: Status;
   resolve: (value: any) => void;
   result: Promise<any>;
 };
 
 interface Flow {
   title: string;
+  status: Status;
   steps: FlowStep[];
 }
 
@@ -23,7 +26,7 @@ export type State = {
 state.flows ??= {};
 
 export async function io({ title, context }) {
-  state.flows[context] = { title, steps: [] };
+  state.flows[context] = { title, status: "not-started", steps: [] };
   return { context };
 }
 
@@ -37,10 +40,8 @@ export async function start({ title }) {
 }
 
 export const IO = {
-  async input({ label }, { obj }) {
-    if (!obj?.context || !(obj.context in state.flows)) {
-      throw new Error("Flow not started");
-    }
+  async inputText({ label }, { obj }) {
+    verifyFlow(obj.context);
     let resolve;
     const result = new Promise((r) => {
       resolve = r;
@@ -49,19 +50,27 @@ export const IO = {
       id: genId(),
       label,
       kind: "input",
-      status: "waiting",
+      status: "not-started",
       resolve,
       result,
     });
     return result;
   },
+  async outputText({ text }, { obj }) {
+    verifyFlow(obj.context);
+  },
+  async end(_, { obj }) {
+    verifyFlow(obj.context);
+    const flow = state.flows[obj.context];
+    flow.status = "done";
+  },
 };
 
 export async function test({ title, label }) {
   const io = await root.start({ title });
-  const name = await io.input({ label: "What is your name?" });
+  const name = await io.inputText({ label: "What is your name?" });
   console.log(name);
-  return await io.input({ label });
+  return await io.inputText({ label });
 }
 
 // Handles the program's HTTP endpoint
@@ -94,13 +103,17 @@ export const endpoint: resolvers.Root["endpoint"] = async ({
     }
   }
   if (method === "GET" && path.startsWith("/flow/")) {
-    const [context] = path.split("/").slice(2);
+    const [context, stepId] = path.split("/").slice(2);
     if (context in state.flows) {
+      if (stepId && stepId in state.flows[context].steps) {
+        return await renderStep(context, state.flows[context].steps[stepId]);
+      }
       return await renderFlow(context);
     }
-    return JSON.stringify({ error: "Flow not found", status: 404 });
+    return renderRedirect("Flow not found", "/");
   }
-  return render(`
+  // Render landing page
+  return renderPage(`
     <div class="box">
       <h1>Choose a flow</h1>
       <ul class="mt:8 pb:6>li">
@@ -111,11 +124,11 @@ export const endpoint: resolvers.Root["endpoint"] = async ({
                 <a href="/flow/${context}" class="text:underline:hover">${
                 state.flows[context].title
               }</a>
-                <span class="font:bold">${
+                <span>${
                   state.flows[context].steps.every(
                     (step) => step.status === "done"
                   )
-                    ? "Done"
+                    ? "️✅"
                     : ""
                 }</span>
               </li>`
@@ -132,12 +145,14 @@ async function renderFlow(context: string) {
   for (const step of flow.steps) {
     html += await renderStep(context, step);
   }
-  if (flow.steps[flow.steps.length - 1].status === "done") {
+  if (flow.status === "done") {
     html += `<p>Flow completed</p>`;
     html += `<a class="button btn btn-outline-secondary mt:6" href="${await nodes
       .process.endpointUrl}">Go Back</a>`;
+  } else {
+    html += `<p>Loading...</p>`;
   }
-  return render(html);
+  return renderPage(html);
 }
 
 async function renderStep(context: string, step: FlowStep) {
@@ -156,7 +171,7 @@ async function renderStep(context: string, step: FlowStep) {
   }
 }
 
-function render(html: string) {
+function renderPage(html: string) {
   return /*html*/ `
   <html>
     <head>
@@ -189,6 +204,15 @@ function render(html: string) {
   `;
 }
 
+function renderRedirect(message: string, url: string) {
+  return renderPage(/*html*/ `
+    <div class="box" hx-get="/" hx-trigger="load delay:2s" hx-swap="outerHTML" hx-replace-url="true">
+      <h1>${message}</h1>
+      <p>Redirecting...</p>
+    </div>
+  `);
+}
+
 function genId(length: number = 16): string {
   const characters =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-.~";
@@ -203,4 +227,11 @@ function genId(length: number = 16): string {
     );
   }
   return result;
+}
+
+function verifyFlow(context?: string): context is string {
+  if (!context || !(context in state.flows)) {
+    throw new Error("Flow not started");
+  }
+  return true;
 }
