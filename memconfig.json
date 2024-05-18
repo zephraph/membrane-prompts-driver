@@ -16,8 +16,18 @@
             ]
           },
           {
-            "name": "run",
-            "type": "Void"
+            "name": "test",
+            "type": "String",
+            "params": [
+              {
+                "name": "title",
+                "type": "String"
+              },
+              {
+                "name": "label",
+                "type": "String"
+              }
+            ]
           }
         ],
         "fields": [

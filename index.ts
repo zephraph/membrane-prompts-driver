@@ -57,10 +57,11 @@ export const IO = {
   },
 };
 
-export async function run() {
-  const io = await root.start({ title: "Test" });
-  const label = await io.input({ label: "Enter a path" });
-  console.log("run complete!", label);
+export async function test({ title, label }) {
+  const io = await root.start({ title });
+  const name = await io.input({ label: "What is your name?" });
+  console.log(name);
+  return await io.input({ label });
 }
 
 // Handles the program's HTTP endpoint
@@ -100,15 +101,28 @@ export const endpoint: resolvers.Root["endpoint"] = async ({
     return JSON.stringify({ error: "Flow not found", status: 404 });
   }
   return render(`
-    <h1>Choose a flow</h1>
-    <ul>
-      ${Object.keys(state.flows)
-        .map(
-          (context) =>
-            `<li><a href="/flow/${context}">${state.flows[context].title}</a></li>`
-        )
-        .join("")}
-    </ul>
+    <div class="box">
+      <h1>Choose a flow</h1>
+      <ul class="mt:8 pb:6>li">
+        ${Object.keys(state.flows)
+          .map(
+            (context) =>
+              `<li class="flex justify-content:space-between px:4 ml:8>*+*">
+                <a href="/flow/${context}" class="text:underline:hover">${
+                state.flows[context].title
+              }</a>
+                <span class="font:bold">${
+                  state.flows[context].steps.every(
+                    (step) => step.status === "done"
+                  )
+                    ? "Done"
+                    : ""
+                }</span>
+              </li>`
+          )
+          .join("")}
+      </ul>
+    </div>
   `);
 };
 
@@ -156,9 +170,12 @@ function render(html: string) {
       <link rel="stylesheet" href="https://cdn.master.co/normal.css@rc">
       <script>
           window.masterCSSConfig = {
-              variables: {
-                  primary: '#000000'
-              }
+            styles: {
+              box: "flex flex:col gap:8 bg:#f4f4f4 p:12|20|14 border:1|solid|#999 box-shadow:1|1|#222,2|2|#222,3|3|#222,4|4|#222,5|5|#222"
+            },
+            variables: {
+                primary: '#000000'
+            }
           }
       </script>
       <script src="https://cdn.master.co/css-runtime@rc"></script>
