@@ -50,22 +50,7 @@
       },
       {
         "name": "IO",
-        "actions": [
-          {
-            "name": "end",
-            "type": "Void"
-          },
-          {
-            "name": "outputText",
-            "type": "Void",
-            "params": [
-              {
-                "name": "text",
-                "type": "String"
-              }
-            ]
-          }
-        ],
+        "actions": [],
         "fields": [
           {
             "name": "inputText",
@@ -73,6 +58,20 @@
             "params": [
               {
                 "name": "label",
+                "type": "String"
+              }
+            ]
+          },
+          {
+            "name": "end",
+            "type": "String"
+          },
+          {
+            "name": "outputText",
+            "type": "String",
+            "params": [
+              {
+                "name": "text",
                 "type": "String"
               }
             ]

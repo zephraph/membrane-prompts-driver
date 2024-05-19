@@ -26,7 +26,11 @@ export type State = {
 state.flows ??= {};
 
 export async function io({ title, context }) {
-  state.flows[context] = { title, status: "not-started", steps: [] };
+  /**
+   * This is weird, but it's a workaround for the fact parent resolvers are
+   * called again when the child resolvers are called.
+   */
+  state.flows[context] ??= { title, status: "not-started", steps: [] };
   return { context };
 }
 
@@ -42,12 +46,19 @@ export async function start({ title }) {
 export const IO = {
   async inputText({ label }, { obj }) {
     verifyFlow(obj.context);
+    const stepId = genId();
     let resolve;
     const result = new Promise((r) => {
-      resolve = r;
+      resolve = (text) => {
+        r(text);
+        try {
+          state.flows[obj.context].steps.find((s) => s.id === stepId)!.status =
+            "done";
+        } catch {}
+      };
     });
     state.flows[obj.context].steps.push({
-      id: genId(),
+      id: stepId,
       label,
       kind: "input",
       status: "not-started",
@@ -69,8 +80,9 @@ export const IO = {
 export async function test({ title, label }) {
   const io = await root.start({ title });
   const name = await io.inputText({ label: "What is your name?" });
-  console.log(name);
-  return await io.inputText({ label });
+  const result = await io.inputText({ label });
+  await io.end();
+  return result;
 }
 
 // Handles the program's HTTP endpoint
@@ -94,7 +106,6 @@ export const endpoint: resolvers.Root["endpoint"] = async ({
             if (!value) {
               return JSON.stringify({ error: "Value required", status: 400 });
             }
-            step.status = "done";
             step.resolve(value);
             return await renderFlow(context);
           }
@@ -103,11 +114,8 @@ export const endpoint: resolvers.Root["endpoint"] = async ({
     }
   }
   if (method === "GET" && path.startsWith("/flow/")) {
-    const [context, stepId] = path.split("/").slice(2);
+    const [context] = path.split("/").slice(2);
     if (context in state.flows) {
-      if (stepId && stepId in state.flows[context].steps) {
-        return await renderStep(context, state.flows[context].steps[stepId]);
-      }
       return await renderFlow(context);
     }
     return renderRedirect("Flow not found", "/");
@@ -125,11 +133,7 @@ export const endpoint: resolvers.Root["endpoint"] = async ({
                 state.flows[context].title
               }</a>
                 <span>${
-                  state.flows[context].steps.every(
-                    (step) => step.status === "done"
-                  )
-                    ? "️✅"
-                    : ""
+                  state.flows[context].status === "done" ? "️✅" : ""
                 }</span>
               </li>`
           )
@@ -141,7 +145,7 @@ export const endpoint: resolvers.Root["endpoint"] = async ({
 
 async function renderFlow(context: string) {
   const flow = state.flows[context];
-  let html = "";
+  let html = `<div class="box">`;
   for (const step of flow.steps) {
     html += await renderStep(context, step);
   }
@@ -149,26 +153,46 @@ async function renderFlow(context: string) {
     html += `<p>Flow completed</p>`;
     html += `<a class="button btn btn-outline-secondary mt:6" href="${await nodes
       .process.endpointUrl}">Go Back</a>`;
-  } else {
-    html += `<p>Loading...</p>`;
+  } else if (flow.steps.every((step) => step.status === "done")) {
+    html += await renderNextStep(context);
   }
+  html += "</div>";
   return renderPage(html);
 }
 
 async function renderStep(context: string, step: FlowStep) {
   switch (step.kind) {
     case "input":
+      if (step.status === "not-started") {
+        step.status = "in-progress";
+      }
       if (step.status === "done") {
-        return `<p>${step.label}: ${await step.result}</p>`;
+        return /*html*/ `
+        <p class="flex flex:col gap:1">
+          <span>${step.label}</span> 
+          <span class="font:bold">${await step.result}</span>
+        </p>`;
       }
       return `
-        <form hx-post="/flow/${context}/${step.id}" hx-trigger="submit" hx-swap="outerHTML" hx-ext="json-enc" class="flex flex:col gap:6 max-w:fit">
+        <form hx-post="/flow/${context}/${step.id}" hx-trigger="submit" class="flex flex:col gap:6 max-w:fit">
           <label>${step.label}</label>
           <input name="value" type="text" class="border:solid|1|black">
           <button class="btn btn-outline-secondary" type="submit">Submit</button>
         </form>
       `;
   }
+}
+
+async function renderNextStep(context: string) {
+  const step = state.flows[context].steps.find(
+    (step) => step.status === "not-started"
+  );
+  if (state.flows[context].status !== "done" && !step) {
+    return `<p hx-get="/flow/${context}/next" hx-trigger="load every 10s">Loading</p>`;
+  } else if (!step) {
+    return "";
+  }
+  return await renderStep(context, step);
 }
 
 function renderPage(html: string) {
@@ -179,6 +203,7 @@ function renderPage(html: string) {
       <title>Membrane HTMX Demo</title>
       <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
       <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/json-enc.js"></script>
+      <script src="https://unpkg.com/idiomorph/dist/idiomorph-ext.min.js"></script>
       <link rel="stylesheet" href="https://www.membrane.io/light.css"></script>
       <link rel="preload" as="script" href="https://cdn.master.co/css-runtime@rc">
       <link rel="preload" as="style" href="https://cdn.master.co/normal.css@rc">
@@ -186,7 +211,7 @@ function renderPage(html: string) {
       <script>
           window.masterCSSConfig = {
             styles: {
-              box: "flex flex:col gap:8 bg:#f4f4f4 p:12|20|14 border:1|solid|#999 box-shadow:1|1|#222,2|2|#222,3|3|#222,4|4|#222,5|5|#222"
+              box: "flex flex:col gap:8 bg:#f4f4f4 p:12|20|14 border:1|solid|#999 box-shadow:1|1|#222,2|2|#222,3|3|#222,4|4|#222,5|5|#222 background:white_input"
             },
             variables: {
                 primary: '#000000'
@@ -195,7 +220,7 @@ function renderPage(html: string) {
       </script>
       <script src="https://cdn.master.co/css-runtime@rc"></script>
     </head>
-    <body>
+    <body hx-ext="json-enc,morph" hx-swap="morph:innerHTML" hx-target="body">
       <main class="p:10 h:full w:full flex flex:col gap:6 justify-content:center align-items:center">
         ${html}
       </main>
@@ -206,7 +231,7 @@ function renderPage(html: string) {
 
 function renderRedirect(message: string, url: string) {
   return renderPage(/*html*/ `
-    <div class="box" hx-get="/" hx-trigger="load delay:2s" hx-swap="outerHTML" hx-replace-url="true">
+    <div class="box" hx-get="/" hx-trigger="load delay:2s" hx-replace-url="true">
       <h1>${message}</h1>
       <p>Redirecting...</p>
     </div>
