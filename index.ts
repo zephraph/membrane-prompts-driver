@@ -3,7 +3,7 @@
 // `state` is an object that persists across program updates. Store data here.
 import { root, nodes, state, handles, resolvers } from "membrane";
 
-type Status = "not-started" | "in-progress" | "done";
+type Status = "not-started" | "in-progress" | "done" | "aborted";
 
 type FlowStep = {
   id: string;
@@ -11,6 +11,7 @@ type FlowStep = {
   kind: "input";
   status: Status;
   resolve: (value: any) => void;
+  abort: (reason: any) => void;
   result: Promise<any>;
 };
 
@@ -34,13 +35,15 @@ export async function io({ title, context }) {
   return { context };
 }
 
-export async function start({ title }) {
+export async function start({ title, timeout = 30 }) {
   const context = genId();
   console.log(
     "Flow URL:",
     (await nodes.process.endpointUrl) + `/flow/${context}`
   );
-  return root.io({ context, title });
+  const io = root.io({ context, title });
+  io.timeout({ context }).$invokeIn(timeout * 60);
+  return io;
 }
 
 export const IO = {
@@ -48,9 +51,11 @@ export const IO = {
     verifyFlow(obj.context);
     const stepId = genId();
     let resolve;
-    const result = new Promise((r) => {
+    let abort;
+    const result = new Promise((res, rej) => {
+      abort = rej;
       resolve = (text) => {
-        r(text);
+        res(text);
         try {
           state.flows[obj.context].steps.find((s) => s.id === stepId)!.status =
             "done";
@@ -63,12 +68,29 @@ export const IO = {
       kind: "input",
       status: "not-started",
       resolve,
+      abort,
       result,
     });
     return result;
   },
   async outputText({ text }, { obj }) {
     verifyFlow(obj.context);
+  },
+  async timeout({ context }) {
+    if (!(context in state.flows)) {
+      return;
+    }
+    let stepAborted = false;
+    state.flows[context].steps
+      .filter((step) => step.status !== "done")
+      .forEach((step) => {
+        stepAborted = true;
+        step.status = "aborted";
+        step.abort("Timeout");
+      });
+    if (stepAborted) {
+      state.flows[context].status = "aborted";
+    }
   },
   async end(_, { obj }) {
     verifyFlow(obj.context);
@@ -78,7 +100,7 @@ export const IO = {
 };
 
 export async function test({ title, label }) {
-  const io = await root.start({ title });
+  const io = await root.start({ title, timeout: 1 });
   const name = await io.inputText({ label: "What is your name?" });
   const result = await io.inputText({ label });
   await io.end();
@@ -133,7 +155,8 @@ export const endpoint: resolvers.Root["endpoint"] = async ({
                 state.flows[context].title
               }</a>
                 <span>${
-                  state.flows[context].status === "done" ? "️✅" : ""
+                  { done: "️✅", aborted: "❌" }[state.flows[context].status] ??
+                  ""
                 }</span>
               </li>`
           )
@@ -153,6 +176,10 @@ async function renderFlow(context: string) {
     html += `<p>Flow completed</p>`;
     html += `<a class="button btn btn-outline-secondary mt:6" href="${await nodes
       .process.endpointUrl}">Go Back</a>`;
+  } else if (flow.status === "aborted") {
+    html += `<p>Flow aborted</p>`;
+    html += `<a class="button btn btn-outline-secondary mt:6" href="${await nodes
+      .process.endpointUrl}">Go Back</a>`;
   } else if (flow.steps.every((step) => step.status === "done")) {
     html += await renderNextStep(context);
   }
@@ -165,6 +192,13 @@ async function renderStep(context: string, step: FlowStep) {
     case "input":
       if (step.status === "not-started") {
         step.status = "in-progress";
+      }
+      if (step.status === "aborted") {
+        return /*html*/ `
+        <p class="flex flex:col gap:1">
+          <span>${step.label}</span> 
+          <span class="font:bold color:#f00">Aborted</span>
+        </p>`;
       }
       if (step.status === "done") {
         return /*html*/ `

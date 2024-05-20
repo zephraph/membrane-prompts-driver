@@ -12,6 +12,11 @@
               {
                 "name": "title",
                 "type": "String"
+              },
+              {
+                "name": "timeout",
+                "type": "Int",
+                "optional": true
               }
             ]
           },
@@ -50,7 +55,18 @@
       },
       {
         "name": "IO",
-        "actions": [],
+        "actions": [
+          {
+            "name": "timeout",
+            "type": "Void",
+            "params": [
+              {
+                "name": "context",
+                "type": "String"
+              }
+            ]
+          }
+        ],
         "fields": [
           {
             "name": "inputText",
